@@ -1,0 +1,56 @@
+# ── REQUIRED ────────────────────────────────────────────────────────────────
+gateway:
+  # Weaviate Cloud metrics ingest endpoint. The console pre-fills this.
+  endpoint: ""                       # e.g. https://telemetry.weaviate.cloud
+
+telemetry:
+  # Name of a pre-created Kubernetes Secret holding the telemetry token.
+  # The token is the SOLE identity binding — the gateway derives the cluster from
+  # it server-side. Never put the raw token in values.yaml.
+  existingSecretName: ""             # e.g. weaviate-telemetry-token
+  secretKey: token                   # key within that Secret
+
+weaviate:
+  # Namespace where the Weaviate pods run. Defaults to the release namespace.
+  namespace: ""
+  metricsPort: 2112                  # Weaviate Prometheus port (PROMETHEUS_MONITORING_ENABLED)
+
+# ── OPTIONAL ────────────────────────────────────────────────────────────────
+cluster:
+  # Cosmetic label only, for the customer's own debugging. NOT used for identity
+  # (the gateway ignores client-provided identity — see RFC § 2.2.2). May be empty.
+  name: ""
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.154.0"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+scrape:
+  intervalSeconds: 30
+batch:
+  timeoutSeconds: 30
+
+serviceAccount:
+  create: true
+  name: ""                           # defaults to the fullname
+
+rbac:
+  # Namespaced Role + RoleBinding (pods get/list/watch) in weaviate.namespace.
+  # Deliberately NOT a ClusterRole — minimal blast radius (RFC § 2.1.1).
+  create: true
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

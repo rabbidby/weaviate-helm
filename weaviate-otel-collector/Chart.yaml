@@ -1,0 +1,16 @@
+apiVersion: v2
+name: weaviate-otel-collector
+description: Pushes aggregate Weaviate metrics to Weaviate Cloud (OSS "Cloud Connect").
+# Deploys a pre-configured OpenTelemetry collector that scrapes a self-hosted
+# Weaviate's Prometheus endpoint and pushes a curated, label-sanitised metric set
+# (OTLP/HTTP, gzip) to the Weaviate Cloud ingest gateway. Outbound-only.
+type: application
+version: 0.1.0          # chart version
+appVersion: "0.154.0"   # otel/opentelemetry-collector-contrib image tag
+keywords:
+  - weaviate
+  - opentelemetry
+  - metrics
+home: https://console.weaviate.cloud
+maintainers:
+  - name: Weaviate Cloud
