@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "woc.fullname" . }}
+  labels:
+    {{- include "woc.labels" . | nindent 4 }}
+data:
+  collector.yaml: |
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+      # Outbound auth to the Weaviate Cloud gateway. Token comes from the mounted
+      # Secret via the TELEMETRY_TOKEN env (never rendered into this ConfigMap).
+      bearertokenauth/outbound:
+        scheme: Bearer
+        token: ${env:TELEMETRY_TOKEN}
+
+    receivers:
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: weaviate
+              scrape_interval: {{ .Values.scrape.intervalSeconds }}s
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names: ["{{ include "woc.weaviateNamespace" . }}"]
+              # Keep only Weaviate's metrics port; drop all other pod ports.
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_container_port_number]
+                  action: keep
+                  regex: "{{ .Values.weaviate.metricsPort }}"
+
+    processors:
+      # 1. Metric-name allow-list (curated, PII-free set from RFC Appendix A, plus
+      #    batch_size_bytes, the three cluster-health metrics, and the heartbeat).
+      #    NOTE: the gateway ALSO strips labels server-side; this is the metric-name layer.
+      filter/allowlist:
+        error_mode: ignore
+        metrics:
+          metric:
+            - 'not(IsMatch(metric.name, "^(backup_(store|restore)_data_transferred|batch_durations_ms|batch_objects_.*|batch_size_bytes|concurrent_queries_count|object_count|query_dimensions_total|queries_durations_ms|queue_size|requests_total|vector_index_tombstones|vector_index_tombstone_cleaned|vector_index_operations|vector_index_queue_(delete|insert)_count|vector_index_size|weaviate_index_shard.*|weaviate_lsm_bucket_.*|weaviate_replication_.*|weaviate_schema_collections|weaviate_schema_shards|weaviate_internal_gauge_memberlist_node_instances|weaviate_runtime_config_hash|weaviate_runtime_config_last_load_success|weaviate_vector_index_memory_allocation_rejected_total|weaviate_oss_collector_heartbeat)$"))'
+      # 2. Drop pod-identifying resource attributes (defense-in-depth; the gateway
+      #    re-strips too). Keep only service.name.
+      transform/merge:
+        error_mode: ignore
+        metric_statements:
+          - keep_keys(resource.attributes, ["service.name"])
+      # 3. Collapse datapoints under the same resource to cluster level.
+      groupbyattrs:
+        keys: [service.name]
+      # 4. Per-metric aggregation. The COMPLETE per-metric statement list is copied
+      #    verbatim from the internal Notion config (RFC Appendix A) — TODO before beta.
+      #    Examples below show the shape; timestamp alignment applies to all datapoints.
+      transform/aggregate:
+        error_mode: ignore
+        metric_statements:
+          - context: datapoint
+            statements:
+              - set(time, TruncateTime(Now(), Duration("10s")))
+          # - conditions: ['metric.name == "object_count"']
+          #   statements: ['aggregate_on_attributes("sum", [])']
+          # - conditions: ['metric.name == "queries_durations_ms"']
+          #   statements: ['aggregate_on_attributes("sum", ["query_type"])']
+      batch:
+        timeout: {{ .Values.batch.timeoutSeconds }}s
+
+    exporters:
+      otlphttp/weaviate:
+        endpoint: {{ required "gateway.endpoint is required (the Weaviate Cloud metrics endpoint)" .Values.gateway.endpoint | quote }}
+        auth:
+          authenticator: bearertokenauth/outbound
+        compression: gzip
+        sending_queue:
+          enabled: true
+          num_consumers: 4
+          queue_size: 1000
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 60s
+          max_elapsed_time: 300s
+
+    service:
+      extensions: [health_check, bearertokenauth/outbound]
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          processors: [filter/allowlist, transform/merge, groupbyattrs, transform/aggregate, batch]
+          exporters: [otlphttp/weaviate]

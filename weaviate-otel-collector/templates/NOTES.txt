@@ -1,0 +1,18 @@
+weaviate-otel-collector is installed.
+
+  Release:        {{ .Release.Name }}
+  Collector ns:   {{ .Release.Namespace }}
+  Scraping ns:    {{ include "woc.weaviateNamespace" . }} (Weaviate pods, port {{ .Values.weaviate.metricsPort }})
+  Pushing to:     {{ .Values.gateway.endpoint }}
+
+Verify it's running:
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "woc.fullname" . }}
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "woc.fullname" . }}
+
+A healthy collector logs successful exports and no auth errors. Metrics should
+appear in the Weaviate Cloud console within ~60-90s of real Weaviate workload.
+
+Reminders:
+  - Weaviate must run with PROMETHEUS_MONITORING_ENABLED=true (metrics on :{{ .Values.weaviate.metricsPort }}).
+  - The telemetry token is read from Secret "{{ .Values.telemetry.existingSecretName }}" (key "{{ .Values.telemetry.secretKey }}").
+  - Panels stay empty until the cluster does real work — the metrics are emitted lazily.
