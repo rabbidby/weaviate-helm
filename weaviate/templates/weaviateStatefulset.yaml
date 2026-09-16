@@ -323,6 +323,13 @@ spec:
                 name: weaviate-morph
                 key: apiKey
           {{- end  }}
+          {{- if and (index .Values "modules" "text2vec-digitalocean" "enabled") (index .Values "modules" "text2vec-digitalocean" "apiKey") }}
+          - name: DIGITALOCEAN_APIKEY
+            valueFrom:
+              secretKeyRef:
+                name: weaviate-digitalocean
+                key: apiKey
+          {{- end  }}
           {{- if and (index .Values "modules" "generative-friendliai" "enabled") (index .Values "modules" "generative-friendliai" "token") }}
           - name: FRIENDLI_TOKEN
             valueFrom:
@@ -526,6 +533,14 @@ spec:
             value: {{ $value | quote }}
               {{- end }}
             {{- end }}
+          {{- end }}
+          {{- if index .Values "namespaces" "enabled" }}
+          - name: NAMESPACES_ENABLED
+            value: "true"
+          - name: DISABLE_GRAPHQL
+            value: "true"
+          - name: REPLICATION_MAXIMUM_FACTOR
+            value: "1"
           {{- end }}
           - name: CLUSTER_JOIN
             value: {{ .Values.service.name }}-headless.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
